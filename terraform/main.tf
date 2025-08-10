@@ -12,11 +12,11 @@ provider "aws" {
 }
 
 resource "aws_instance" "my_ec2" {
+  count         = var.instance_count
   ami           = var.ami_id
   instance_type = var.instance_type
-  count         = var.instance_count
 
   tags = {
-    Name = "My-T3-Micro-${count.index + 1}"
+    Name = "my-ec2-${count.index}"
   }
 }
