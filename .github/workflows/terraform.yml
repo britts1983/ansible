@@ -68,16 +68,16 @@ jobs:
         run: |
           echo "RAW SLAVE1_HOST: '${SLAVE1_HOST}'"
           echo "RAW SLAVE2_HOST: '${SLAVE2_HOST}'"
-          export SLAVE1_HOST_CLEAN="$(printf %s "${SLAVE1_HOST}" | tr -d '\r\"\' | xargs)"
-          export SLAVE2_HOST_CLEAN="$(printf %s "${SLAVE2_HOST}" | tr -d '\r\"\' | xargs)"
+          SLAVE1_HOST_CLEAN="$(printf %s "${SLAVE1_HOST}" | tr -d '\r"' | xargs)"
+          SLAVE2_HOST_CLEAN="$(printf %s "${SLAVE2_HOST}" | tr -d '\r"' | xargs)"
           echo "CLEAN SLAVE1_HOST: '${SLAVE1_HOST_CLEAN}'"
           echo "CLEAN SLAVE2_HOST: '${SLAVE2_HOST_CLEAN}'"
-          echo "SLAVE1_HOST_CLEAN=${SLAVE1_HOST_CLEAN}" >> $GITHUB_ENV
-          echo "SLAVE2_HOST_CLEAN=${SLAVE2_HOST_CLEAN}" >> $GITHUB_ENV
+          echo "SLAVE1_HOST_CLEAN=${SLAVE1_HOST_CLEAN}" >> "$GITHUB_ENV"
+          echo "SLAVE2_HOST_CLEAN=${SLAVE2_HOST_CLEAN}" >> "$GITHUB_ENV"
 
       - name: Create inventory
         run: |
-          cat > inventory.ini <<'EOF'
+          cat > inventory.ini <<EOF
           [slaves]
           slave1 ansible_host=${SLAVE1_HOST_CLEAN} ansible_user=${SSH_USER} ansible_ssh_private_key_file=~/.ssh/id_ci
           slave2 ansible_host=${SLAVE2_HOST_CLEAN} ansible_user=${SSH_USER} ansible_ssh_private_key_file=~/.ssh/id_ci
@@ -92,109 +92,8 @@ jobs:
 
       - name: Raw SSH test
         run: |
-          ssh ${SSH_USER}@${SLAVE1_HOST_CLEAN} 'echo ok from slave1'
-          ssh ${SSH_USER}@${SLAVE2_HOST_CLEAN} 'echo ok from slave2'
-
-      - name: Ping check
-        run: ansible -i inventory.ini slaves -m ping
-
-      - name: Run Ngi
-name: Terraform + Ansible
-
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
-
-jobs:
-  terraform:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-northeast-1
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Terraform Init
-        run: terraform init
-        working-directory: terraform
-
-      - name: Terraform Fmt
-        run: terraform fmt -check -recursive
-        working-directory: terraform
-
-      - name: Terraform Validate
-        run: terraform validate
-        working-directory: terraform
-
-      - name: Terraform Plan
-        run: terraform plan -input=false
-        working-directory: terraform
-
-      - name: Terraform Apply (main only)
-        if: github.ref == 'refs/heads/main'
-        run: terraform apply -auto-approve -input=false
-        working-directory: terraform
-
-  ansible:
-    needs: terraform
-    runs-on: ubuntu-latest
-    env:
-      SSH_USER: ${{ secrets.SSH_USER }}
-      SLAVE1_HOST: ${{ secrets.SLAVE1_HOST }}
-      SLAVE2_HOST: ${{ secrets.SLAVE2_HOST }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Ansible
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y ansible
-
-      - name: Write SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ci
-          chmod 600 ~/.ssh/id_ci
-          printf "Host *\n  IdentityFile ~/.ssh/id_ci\n  StrictHostKeyChecking no\n  UserKnownHostsFile=/dev/null\n" > ~/.ssh/config
-
-      - name: Sanitize host env vars
-        run: |
-          echo "RAW SLAVE1_HOST: '${SLAVE1_HOST}'"
-          echo "RAW SLAVE2_HOST: '${SLAVE2_HOST}'"
-          export SLAVE1_HOST_CLEAN="$(printf %s "${SLAVE1_HOST}" | tr -d '\r\"\' | xargs)"
-          export SLAVE2_HOST_CLEAN="$(printf %s "${SLAVE2_HOST}" | tr -d '\r\"\' | xargs)"
-          echo "CLEAN SLAVE1_HOST: '${SLAVE1_HOST_CLEAN}'"
-          echo "CLEAN SLAVE2_HOST: '${SLAVE2_HOST_CLEAN}'"
-          echo "SLAVE1_HOST_CLEAN=${SLAVE1_HOST_CLEAN}" >> $GITHUB_ENV
-          echo "SLAVE2_HOST_CLEAN=${SLAVE2_HOST_CLEAN}" >> $GITHUB_ENV
-
-      - name: Create inventory
-        run: |
-          cat > inventory.ini <<'EOF'
-          [slaves]
-          slave1 ansible_host=${SLAVE1_HOST_CLEAN} ansible_user=${SSH_USER} ansible_ssh_private_key_file=~/.ssh/id_ci
-          slave2 ansible_host=${SLAVE2_HOST_CLEAN} ansible_user=${SSH_USER} ansible_ssh_private_key_file=~/.ssh/id_ci
-
-          [all:vars]
-          ansible_python_interpreter=/usr/bin/python3
-          ansible_ssh_common_args='-o StrictHostKeyChecking=no'
-          EOF
-          echo "Inventory (show invisibles):"
-          cat -A inventory.ini
-          ansible-inventory -i inventory.ini --graph
-
-      - name: Raw SSH test
-        run: |
-          ssh ${SSH_USER}@${SLAVE1_HOST_CLEAN} 'echo ok from slave1'
-          ssh ${SSH_USER}@${SLAVE2_HOST_CLEAN} 'echo ok from slave2'
+          ssh -o StrictHostKeyChecking=no "${SSH_USER}@${SLAVE1_HOST_CLEAN}" 'echo ok from slave1'
+          ssh -o StrictHostKeyChecking=no "${SSH_USER}@${SLAVE2_HOST_CLEAN}" 'echo ok from slave2'
 
       - name: Ping check
         run: ansible -i inventory.ini slaves -m ping
