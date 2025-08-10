@@ -2,14 +2,12 @@ name: Terraform COCD
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
   cocd:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -21,10 +19,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-northeast-1
 
-      - name: Who am I (STS)
-        run: aws sts get-caller-identity
-
-      - name: Set TF_VAR_region
+      - name: Pin TF region for this run
         run: echo "TF_VAR_region=ap-northeast-1" >> $GITHUB_ENV
 
       - name: Setup Terraform
@@ -34,7 +29,7 @@ jobs:
         run: terraform init
         working-directory: terraform
 
-      - name: Terraform Format Check
+      - name: Terraform Fmt
         run: terraform fmt -check -recursive
         working-directory: terraform
 
