@@ -1,16 +1,15 @@
-name: Terraform COCD
+name: Terraform + Ansible
 
 on:
   push:
-    branches: [ main,test ]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  cocd:
+  terraform:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -18,9 +17,6 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-northeast-1
-
-      - name: Pin TF region for this run
-        run: echo "TF_VAR_region=ap-northeast-1" >> $GITHUB_ENV
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -41,7 +37,53 @@ jobs:
         run: terraform plan -input=false
         working-directory: terraform
 
-      - name: Terraform Apply
+      - name: Terraform Apply (main only)
         if: github.ref == 'refs/heads/main'
         run: terraform apply -auto-approve -input=false
         working-directory: terraform
+
+  ansible:
+    needs: terraform
+    runs-on: ubuntu-latest
+    env:
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SLAVE1_HOST: ${{ secrets.SLAVE1_HOST }}
+      SLAVE2_HOST: ${{ secrets.SLAVE2_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ansible
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ansible
+
+      - name: Write SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ci
+          chmod 600 ~/.ssh/id_ci
+          printf "Host *\n  StrictHostKeyChecking no\n  UserKnownHostsFile=/dev/null\n" > ~/.ssh/config
+
+      - name: Create inventory
+        run: |
+          cat > inventory.ini <<'EOF'
+          [slaves]
+          slave1 ansible_host=${SLAVE1_HOST} ansible_user=${SSH_USER} ansible_ssh_private_key_file=~/.ssh/id_ci
+          slave2 ansible_host=${SLAVE2_HOST} ansible_user=${SSH_USER} ansible_ssh_private_key_file=~/.ssh/id_ci
+
+          [all:vars]
+          ansible_python_interpreter=/usr/bin/python3
+          ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+          EOF
+          ansible-inventory -i inventory.ini --graph
+
+      - name: Ping check
+        run: ansible -i inventory.ini slaves -m ping
+
+      - name: Run Nginx playbook
+        run: ansible-playbook -i inventory.ini ansible/install_nginx.yml
+
+      - name: Verify Nginx
+        run: |
+          ansible -i inventory.ini slaves -m shell -a "systemctl is-active nginx"
+          ansible -i inventory.ini slaves -m shell -a "curl -sI localhost | head -1"
