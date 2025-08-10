@@ -1,4 +1,4 @@
-name: Terraform CI/CD
+name: Terraform COCD
 
 on:
   push:
@@ -7,17 +7,27 @@ on:
   workflow_dispatch:
 
 jobs:
-  terraform:
+  cocd:
     runs-on: ubuntu-latest
-
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
+
+      # ✅ Configure AWS credentials from your GitHub Secrets
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          # Uncomment the next line if you are using temporary session credentials
+          # aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ap-northeast-1
+
+      # (Optional) Test the credentials to confirm they work
+      - name: Who am I
+        run: aws sts get-caller-identity
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
@@ -26,7 +36,7 @@ jobs:
         working-directory: terraform
 
       - name: Terraform Format Check
-        run: terraform fmt -check
+        run: terraform fmt -check -recursive
         working-directory: terraform
 
       - name: Terraform Validate
