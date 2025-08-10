@@ -8,7 +8,7 @@ variable "instance_type" {
 
 # Reduce from 3 to 1 to avoid vCPU quota errors
 variable "instance_count" {
-  default = 1
+  default = 3
 }
 
 variable "ami_id" {
